@@ -22,16 +22,8 @@ scripts/
   build_dataset.py    Windowing + source/filter + gammatone encoding
   pretrain_lsm.py     Unsupervised STDP pretraining, then frozen
                       feature/spike extraction
-notebooks/
-  Inference_for_paper.ipynb          Final classification, Table 1, Fig. 3
-  Confusion_matrix_onlyspeechdata.ipynb  Related analysis on speech-only features
 docs/PIPELINE.md      How the paper's methodology maps onto the code
 ```
-
-`src/lsm_animation.py` is an optional Manim (Python animation library) 3D
-visualization of the reservoir structure/dynamics/STDP, used for talks and
-slides. It is not required to reproduce any paper result and needs
-`pip install manim` separately.
 
 ## Data availability
 
@@ -41,10 +33,8 @@ collected under IRCCS Stella Maris' ethics approval and involving minors.
 scripts here operate on your own data: point `scripts/build_dataset.py` at
 your own audio directories and a `subject_id,label` CSV (see
 `docs/PIPELINE.md` and the docstrings in each script for the expected
-layout). Model weights and extracted features derived from the real cohort
-are likewise not distributed; `notebooks/figures/` and the confusion
-matrix/ROC images under `notebooks/` are the final aggregate outputs
-reported in the paper.
+layout). Model weights, extracted features, and figures derived from the
+real cohort are likewise not distributed.
 
 ## Installation
 
@@ -82,9 +72,10 @@ python scripts/pretrain_lsm.py \
     --output-dir results/stella_maris_pretrain
 ```
 
-Then open `notebooks/Inference_for_paper.ipynb`, point it at
-`results/stella_maris_pretrain`, and run it to reproduce the subject-level
-classification metrics and figures.
+`results/stella_maris_pretrain/subject_features.pkl` and the per-subject
+spike files under `results/stella_maris_pretrain/spikes/` then feed the
+subject-level PCA + SVM classification (stratified 5-fold CV) described in
+Section IV.D of the paper, which reproduces Table 1 and Fig. 3.
 
 ## Citation
 

@@ -42,11 +42,10 @@ attributable to the child.
 
 Population-level and layer-wise features (AFR, TB, BI, and their layer-wise
 counterparts) are computed from the exported spike trains and aggregated at
-the subject level. `notebooks/Inference_for_paper.ipynb` reloads
-`subject_features.pkl` and the per-subject spike files, then runs the
-stratified 5-fold PCA + SVM classification and produces Table 1 and Fig. 3 of
-the paper (`notebooks/Confusion_matrix_onlyspeechdata.ipynb` contains a
-related, narrower analysis restricted to the speech-only feature sets).
+the subject level. From `subject_features.pkl` and the per-subject spike
+files produced by `scripts/pretrain_lsm.py`, a stratified 5-fold PCA + SVM
+classification (Section IV.D of the paper) reproduces Table 1 and Fig. 3.
+That classification/plotting step is not shipped as code in this repository.
 
 ## 4. What is not in this repository
 

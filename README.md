@@ -69,13 +69,13 @@ python scripts/build_dataset.py \
 python scripts/pretrain_lsm.py \
     --extract-data-dir data/80_4000_Hz_56_channels \
     --train-data-dir data/all_windows_80_4000_Hz_56_channels \
-    --output-dir results/stella_maris_pretrain
+    --output-dir results/my_run
 ```
 
-`results/stella_maris_pretrain/subject_features.pkl` and the per-subject
-spike files under `results/stella_maris_pretrain/spikes/` then feed the
-subject-level PCA + SVM classification (stratified 5-fold CV) described in
-Section IV.D of the paper, which reproduces Table 1 and Fig. 3.
+`results/my_run/subject_features.pkl` and the per-subject spike files under
+`results/my_run/spikes/` then feed the subject-level PCA + SVM classification
+(stratified 5-fold CV) described in Section IV.D of the paper, which
+reproduces Table 1 and Fig. 3.
 
 ## Citation
 

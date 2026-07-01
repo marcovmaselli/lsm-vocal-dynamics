@@ -26,13 +26,13 @@ def run_pca_kmeans(
     """
     subjects_list = list(subject_features.keys())
     if len(subjects_list) == 0:
-        raise RuntimeError("Nessun soggetto processato: subject_features vuoto")
+        raise RuntimeError("No subjects to process: subject_features is empty")
 
     X = np.stack([subject_features[s] for s in subjects_list], axis=0)
     pca = PCA(n_components=n_components)
     X_2d = pca.fit_transform(X)
     explained_var = pca.explained_variance_ratio_
-    print(f"[PCA] Varianza spiegata: {explained_var}")
+    print(f"[PCA] Explained variance ratio: {explained_var}")
 
     kmeans = KMeans(n_clusters=n_clusters, random_state=random_state, n_init=10)
     clusters = kmeans.fit_predict(X_2d)

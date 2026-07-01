@@ -209,21 +209,32 @@ def linear_predictive_analysis(signal: torch.Tensor,
                                        eps: float = 1e-8, 
                                        **kwargs) -> Tuple[torch.Tensor, torch.Tensor]:
     """
-    Run frame-wise linear predictive analysis on a waveform.
-    
+    Run frame-wise Linear Predictive Analysis (LPA) on a waveform, decomposing it into
+    an LPC filter (spectral envelope) and a residual/source signal (Section IV.A of
+    the paper).
+
+    For each ``win_ms``-long frame (default 30 ms, ``hop_ms`` hop, default 5 ms),
+    LPC coefficients are estimated via the Levinson-Durbin recursion
+    (:func:`levinson_durbin`) on the frame's autocorrelation, and the
+    prediction residual (source) is computed as the difference between the
+    frame and its linear prediction.
+
     Args:
-        signal: 1D tensor, segnale audio
-        sr: sample rate
-        order: ordine LPC
-        win_ms: lunghezza finestra LPC (30 ms)
-        hop_ms: hop tra finestre (5 ms)
-        apply_window: applica finestra (Hamming)
-        window_type: tipo finestra se apply_window=True
-        eps: piccolo valore per evitare zero division
-        
+        signal: 1D waveform tensor.
+        sr: sample rate.
+        order: LPC order.
+        win_ms: LPC analysis window length, in ms.
+        hop_ms: hop between windows, in ms.
+        apply_window: whether to apply a window function before analysis.
+        window_type: window type to apply if ``apply_window`` is True
+            (only ``'hamming'`` is implemented; anything else is a no-op
+            rectangular window).
+        eps: small value to avoid division by zero in the recursion.
+
     Returns:
-        lpc_coeffs: (n_frames, order+1)
-        residuals:  (n_frames, win_len)
+        Tuple of ``(lpc_coeffs, residuals, preds)``: LPC coefficients shaped
+        ``(n_frames, order+1)``, and the residual/predicted signal per frame,
+        both shaped ``(n_frames, win_len)``.
     """
     device = signal.device
     dtype = signal.dtype

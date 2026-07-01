@@ -41,6 +41,15 @@ def parse_args():
 
 
 def main():
+    """Build, pretrain, and freeze the reservoir pair, then export subject-level spikes/features.
+
+    Builds the source/filter reservoirs (paper-default STDP hyperparameters
+    and thresholds), runs ``--n-epochs`` STDP passes over ``--train-data-dir``
+    (checkpointing ``lsm_source.pth``/``lsm_filter.pth`` after each epoch),
+    then freezes the weights and extracts per-subject spikes/features from
+    ``--extract-data-dir`` into ``<output-dir>/subject_features.pkl`` and
+    ``<output-dir>/spikes/<subject>_spikes.npz``.
+    """
     args = parse_args()
     os.makedirs(args.output_dir, exist_ok=True)
     spikes_dir = os.path.join(args.output_dir, "spikes")

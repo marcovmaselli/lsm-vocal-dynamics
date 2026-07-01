@@ -73,16 +73,19 @@ class MinMaxNormalizer:
         self.max_val = max_val
 
     def fit(self, tensor: torch.Tensor):
+        """Record ``tensor``'s min/max as the scaling range for future calls to :meth:`transform`."""
         self.min_val = tensor.min().item()
         self.max_val = tensor.max().item()
 
     def transform(self, tensor: torch.Tensor):
+        """Scale ``tensor`` to ``[0, 1]`` using the range recorded by :meth:`fit`, clamped at the edges."""
         if self.min_val is None or self.max_val is None:
             raise ValueError("Normalizer not fitted yet")
         norm = (tensor - self.min_val) / (self.max_val - self.min_val)
         return torch.clamp(norm, 0.0, 1.0)
 
     def fit_transform(self, tensor: torch.Tensor):
+        """Equivalent to calling :meth:`fit` then :meth:`transform` on the same tensor."""
         self.fit(tensor)
         return self.transform(tensor)
 
@@ -112,17 +115,25 @@ def lpc_filters_to_erb(lpc_coeffs: np.ndarray,
                        pool: str = 'mean',
                        device: torch.device = None) -> torch.Tensor:
     """
-    Convert LPC coefficients per frame into ERB-shaped magnitude vectors.
-    
+    Convert per-frame LPC coefficients into an ERB-banded spectral-envelope
+    representation (the "filter" branch of the paper's source-filter
+    decomposition, Section IV.A): for each frame, the LPC magnitude response
+    ``H(f)`` is evaluated on a linear frequency grid and pooled within each
+    of ``n_filters`` ERB-spaced bands between ``f_min`` and ``f_max``.
+
     Args:
-      lpc_coeffs: np.ndarray shape (n_frames, p+1)  (a[0]=1, a[1..p])
-      sr: sample rate
-      n_filters: number of ERB channels (77)
-      f_min, f_max: Hz
-      n_freqs: number of frequency bins to evaluate H(f)
-      pool: 'mean' or 'max' to aggregate magnitude inside each ERB band
-      device: torch device (optional)
-    
+      lpc_coeffs: np.ndarray shape (n_frames, order+1), as returned by
+          :func:`~src.preprocessing.linear_predictive_analysis` (a[0]=1, a[1..order]).
+      sr: sample rate.
+      n_filters: number of ERB channels (56 in the paper).
+      f_min, f_max: band edges in Hz (``f_max`` defaults to ``sr/2``).
+      n_freqs: number of frequency bins to evaluate ``H(f)`` on.
+      log_compression: apply log compression to the pooled magnitude matrix,
+          then shift it to be non-negative (spiking neuron inputs cannot be
+          negative; see Section IV.A of the paper).
+      pool: 'mean' or 'max' to aggregate magnitude inside each ERB band.
+      device: torch device (optional).
+
     Returns:
       erb_tensor: torch.Tensor shape (n_filters, n_frames)
     """
@@ -155,29 +166,24 @@ def lpc_filters_to_erb(lpc_coeffs: np.ndarray,
             mask = tmp
         band_masks.append(mask)
 
-    # Container for results
     erb_mat = np.zeros((n_filters, n_frames), dtype=np.float32)
 
-    # Loop sui frame
     for t in range(n_frames):
-        a = lpc_coeffs[t]  # shape (p+1,)
+        a = lpc_coeffs[t]  # shape (order+1,)
         _, h = freqz([1.0], a, worN=n_freqs, fs=sr)
         h_mag = np.abs(h)
         for i in range(n_filters):
             vals = h_mag[band_masks[i]]
             erb_mat[i, t] = vals.mean() if pool == 'mean' else vals.max()
 
-    # Log compression globale (sulla matrice intera)
+    # Log compression over the whole matrix, then shift to non-negative
+    # (spiking neuron inputs cannot be negative).
     if log_compression:
         epsilon = 1e-12
-        # erb_mat = np.log10(erb_mat + epsilon)
         erb_mat = np.log(erb_mat + epsilon)
         erb_mat -= erb_mat.min()
-        # erb_mat = torch.log1p(erb_mat)
 
-    # Conversione in torch.Tensor
     erb_mat = torch.from_numpy(erb_mat).to(device or 'cpu', dtype=torch.float32)
-    # erb_mat = (erb_mat - erb_mat.min()) / (erb_mat.max() - erb_mat.min() + 1e-12)
 
     return erb_mat
 
@@ -190,17 +196,33 @@ def residuals_to_gammatone_energy(residuals: torch.Tensor,
                                   log_compression: bool = True,
                                   device: torch.device = None) -> torch.Tensor:
     """
-    Convert a batch of LPC residuals into 77-channel gammatone energy per frame.
-    
-    residuals: (n_frames, frame_len)
-    Returns: gt_energy: (n_filters, n_frames)
+    Convert a batch of LPC residuals (the "source"/excitation branch of the
+    paper's source-filter decomposition, Section IV.A) into per-frame energy
+    across ``n_filters`` ERB-spaced gammatone channels: each residual frame
+    is convolved with a gammatone impulse response centered on each ERB
+    channel, and the mean squared output is taken as that channel's energy.
+
+    Args:
+        residuals: LPC residual frames, shape ``(n_frames, frame_len)``.
+        sr: sample rate.
+        n_filters: number of ERB/gammatone channels (56 in the paper).
+        f_min, f_max: band edges in Hz (``f_max`` defaults to ``sr/2``).
+        segment_length: gammatone impulse response length, **in milliseconds**
+            despite the name (matches how it is used below: ``sr * segment_length / 1000``).
+        log_compression: apply log compression then shift to non-negative
+            (see :func:`lpc_filters_to_erb`), per channel.
+        device: torch device (defaults to ``residuals.device``).
+
+    Returns:
+        gt_energy: torch.Tensor shape ``(n_filters, n_frames)``.
     """
     device = device or residuals.device
     residuals = residuals.to(device).float()
     n_frames, frame_len = residuals.shape
     f_max = f_max or sr/2.0
 
-    # Frequenze centrali 77 canali ERB
+    # ERB-spaced channel center frequencies (local Hz<->ERB helpers, equivalent
+    # to hz2erb/erb2hz above but kept self-contained here).
     def hz_to_erb(f): return 21.4 * np.log10(4.37e-3 * f + 1.0)
     def erb_to_hz(e): return (10**(e / 21.4) - 1.0) / 4.37e-3
     erb_centers = np.linspace(hz_to_erb(f_min), hz_to_erb(f_max), n_filters)
@@ -220,28 +242,23 @@ def residuals_to_gammatone_energy(residuals: torch.Tensor,
         h = env*carrier
         h = h / torch.sqrt(torch.clamp((h**2).sum(), min=1e-12))
 
-        # convoluzione frame-wise
+        # Frame-wise convolution with the gammatone impulse response.
         conv = torch.nn.functional.conv1d(
             residuals.unsqueeze(1),  # shape (n_frames,1,frame_len)
             h.view(1,1,-1),
             padding=0
         ).squeeze(1)  # shape (n_frames, frame_len - filt_len +1)
 
-        # energia frame-based: media su tutta la finestra
+        # Per-frame energy: mean squared output over the convolution window.
         energy = (conv**2).mean(dim=1)  # shape (n_frames,)
 
-    
         if log_compression:
-            # energy = torch.log1p(energy)
             epsilon = 1e-12
             energy = torch.log(energy + epsilon)
-            # energy = torch.log10(energy + epsilon)
             energy -= energy.min()
-            
 
         gt_energy.append(energy)
 
     gt_energy = torch.stack(gt_energy, dim=0)  # shape (n_filters, n_frames)
-    # gt_energy = (gt_energy - gt_energy.min()) / (gt_energy.max() - gt_energy.min() + 1e-12)
 
     return gt_energy

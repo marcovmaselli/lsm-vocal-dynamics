@@ -26,7 +26,6 @@ from .io_utils import (
 from .logging import Tee, setup_logger
 from .lsm import (
 	LSM,
-	LSM_GPU,
 	build_3d_positions,
 	build_weight_in_layered,
 	build_weight_in_layered_one_to_one,
@@ -53,7 +52,6 @@ __all__ = [
 	"AsymmetricSTDP",
 	"CONFIG",
 	"LSM",
-	"LSM_GPU",
 	"MinMaxNormalizer",
 	"Tee",
 	"build_3d_positions",

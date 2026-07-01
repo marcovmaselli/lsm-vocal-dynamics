@@ -59,6 +59,16 @@ def parse_args():
 
 
 def main():
+    """Window every listed subject's audio, encode each window, and append to ``dataset_log.csv``.
+
+    For each ``.wav`` file under ``--audio-dirs`` with a matching row in
+    ``--labels-csv``, this: loads and lowpass-filters the audio; finds the
+    windows to keep (all of them, or only VAD/ELAN speech-only windows);
+    slices 2 s/0.5 s-hop windows over those regions; runs LPC source-filter
+    decomposition + gammatone/ERB encoding on each window; and writes the
+    resulting ``.pt`` tensors plus one manifest row per window. Already-encoded
+    windows (matching output filenames) are skipped, so reruns are resumable.
+    """
     args = parse_args()
     os.makedirs(args.output_dir, exist_ok=True)
     labels = pd.read_csv(args.labels_csv).set_index("subject_id")["label"].to_dict()

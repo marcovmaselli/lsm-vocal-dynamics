@@ -139,10 +139,27 @@ def save_chunks_with_csv_pd(chunks: List[torch.Tensor],
 
 
 def load_subject_features(df: pd.DataFrame, subject: str, data_path: str):
-    """Load ERB and gammatone tensors for all windows of one subject."""
+    """Load ERB and gammatone tensors for all windows of one subject.
+
+    Args:
+        df: Dataset manifest (``dataset_log.csv`` produced by
+            ``scripts/build_dataset.py``), with one row per window.
+        subject: Subject identifier to filter ``df`` on.
+        data_path: Directory containing the ``.pt`` tensor files referenced
+            by ``df`` (only the filename, not the stored path, is used --
+            see below -- so this must be the directory the tensors currently
+            live in, which may differ from where they were originally saved).
+
+    Returns:
+        Tuple of ``(features, label)`` where ``features`` is a list of
+        ``[gammatone, erb]`` tensor pairs (one per window) and ``label`` is
+        the subject-level label from ``df``.
+    """
     features = []
     subj_rows = df[df['subject_id'] == subject]
     for _, row in subj_rows.iterrows():
+        # Only the filename is reused (not the full stored path), so tensors
+        # can be relocated to a different data_path than where they were written.
         gammatone = torch.load(os.path.join(data_path, row['tensor_gammatone_path'].split('/')[-1]))
         erb = torch.load(os.path.join(data_path, row['tensor_erb_path'].split('/')[-1]))
         features.append([gammatone, erb])
@@ -151,17 +168,24 @@ def load_subject_features(df: pd.DataFrame, subject: str, data_path: str):
 def load_subject_windows(
     df: pd.DataFrame,
     subj: str,
-    project_path: str,
+    data_path: str,
 ) -> Tuple[List[torch.Tensor], List[torch.Tensor], int]:
-    """
-    Load ERB and gammatone windows for one subject.
+    """Load ERB and gammatone windows for a single subject, as ``(T, C)`` tensors.
+
+    Thin wrapper around :func:`load_subject_features` that also transposes
+    each tensor from the stored ``(C, T)`` layout to ``(T, C)`` and coerces
+    non-tensor entries (e.g. plain arrays) to ``torch.Tensor``.
+
+    Args:
+        df: Dataset manifest, see :func:`load_subject_features`.
+        subj: Subject identifier.
+        data_path: Directory containing the subject's ``.pt`` tensor files.
 
     Returns:
-        erb_list: List of tensors shaped ``(T, C)``.
-        gam_list: List of tensors shaped ``(T, C)``.
-        label: Subject-level label.
+        Tuple of ``(erb_list, gam_list, label)``: two lists of ``(T, C)``
+        tensors (one entry per window) and the subject-level label.
     """
-    feats, label = load_subject_features(df, subj, project_path)
+    feats, label = load_subject_features(df, subj, data_path)
     if not feats:
         return [], [], label
 

@@ -1,0 +1,57 @@
+cff-version: 1.2.0
+message: "If you use this code, please cite the paper below."
+type: software
+title: "Evaluating Vocal Dynamics in Children using a Neuromorphic Approach"
+authors:
+  - family-names: Maselli
+    given-names: Marco Vincenzo
+    affiliation: University of Florence
+    email: marcovincenzo.maselli@unifi.it
+  - family-names: Pecini
+    given-names: Chiara
+    affiliation: University of Florence
+  - family-names: di Lieto
+    given-names: Maria Chiara
+    affiliation: IRCCS Stella Maris
+  - family-names: Fiorini
+    given-names: Laura
+    affiliation: University of Florence
+  - family-names: Scatigna
+    given-names: Stefano
+    affiliation: University of Florence
+  - family-names: del Lucchese
+    given-names: Benedetta
+    affiliation: IRCCS Stella Maris
+  - family-names: Adelucci
+    given-names: Elena
+    affiliation: University of Florence
+  - family-names: Sgandurra
+    given-names: Giuseppina
+    affiliation: "IRCCS Stella Maris; University of Pisa"
+  - family-names: Cavallo
+    given-names: Filippo
+    affiliation: University of Florence
+preferred-citation:
+  type: conference-paper
+  title: "Evaluating Vocal Dynamics in Children using a Neuromorphic Approach"
+  authors:
+    - family-names: Maselli
+      given-names: Marco Vincenzo
+    - family-names: Pecini
+      given-names: Chiara
+    - family-names: di Lieto
+      given-names: Maria Chiara
+    - family-names: Fiorini
+      given-names: Laura
+    - family-names: Scatigna
+      given-names: Stefano
+    - family-names: del Lucchese
+      given-names: Benedetta
+    - family-names: Adelucci
+      given-names: Elena
+    - family-names: Sgandurra
+      given-names: Giuseppina
+    - family-names: Cavallo
+      given-names: Filippo
+  year: 2026
+  # TODO: replace with the final venue/DOI once available (proceedings, volume, pages, doi).

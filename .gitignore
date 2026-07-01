@@ -1,0 +1,39 @@
+# Data and results (large/sensitive files -- never distributed)
+data/
+results/
+media/
+
+# Editor / tooling
+.vscode/
+.idea/
+.claude/
+tempCodeRunnerFile.*
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+.env
+.venv
+env/
+venv/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# Temp files
+manim.txt
+*.tmp
+*.log
+
+# OS
+.DS_Store
+Thumbs.db

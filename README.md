@@ -77,6 +77,39 @@ python scripts/pretrain_lsm.py \
 (stratified 5-fold CV) described in Section IV.D of the paper, which
 reproduces Table 1 and Fig. 3.
 
+## Corrections after publication
+
+The reservoir connectivity in this repository differs from the code used to
+produce the published results, following a review of the inhibition and
+plasticity index conventions. `Wlsm` and `Win` are `nn.Linear` weights, so
+they are indexed `[post, pre]`; the original code used the opposite reading
+in three places:
+
+- **Inhibitory neurons.** `build_weight_lsm_probabilistic` negated the
+  *rows* of the recurrent matrix, which makes the selected neurons receive
+  only inhibition rather than emit it. Roughly 18% of the reservoir was
+  therefore permanently silent. Inhibition is now applied column-wise, so a
+  flagged neuron inhibits its targets and is itself driven normally
+  (Dale's principle).
+- **Input weights.** The same row-wise negation was applied to `Win`,
+  flipping the sign of the gammatone drive for an unrelated random subset of
+  neurons. Input drive is now purely excitatory; inhibition is expressed
+  only in the recurrent matrix.
+- **STDP updates.** `AsymmetricSTDP` accumulates its outer products as
+  `[pre, post]` but added them to a `[post, pre]` weight matrix, so every
+  update was applied to the reverse synapse. The update is now transposed
+  before being applied.
+
+In addition, `build_weight_lsm_probabilistic` seeded the *global* RNG with a
+fixed default, which gave the source and filter reservoirs identical
+recurrent connectivity; it now uses a local `torch.Generator`, and
+`build_lsm_pair` passes a distinct seed to each reservoir.
+
+These changes alter the network dynamics, so re-running the pipeline will
+not reproduce the published numbers exactly. Commit
+[`b324b80`](../../commit/b324b80) is the last state of the code as used for
+the paper.
+
 ## Citation
 
 See [`CITATION.cff`](CITATION.cff). Please cite the paper if you use this

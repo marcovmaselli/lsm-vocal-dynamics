@@ -50,7 +50,9 @@ def build_lsm_pair(
     win_strength_filter: float = 1.30,
     th_source: float = 20.0 * 0.80,
     th_filter: float = 20.0 * 0.85,
-    inhibit : bool = True
+    inhibit : bool = True,
+    wlsm_seed_source: int = 48,
+    wlsm_seed_filter: int = 49,
 ) -> Tuple[LSM, LSM]:
     """Build the paired source/filter LSM reservoirs (Section IV.B of the paper).
 
@@ -69,7 +71,11 @@ def build_lsm_pair(
         win_strength_source, win_strength_filter: input-weight scaling for
             each reservoir.
         th_source, th_filter: firing thresholds for each reservoir.
-        inhibit: whether a fraction of neurons are randomly inhibitory.
+        inhibit: whether a fraction of neurons are randomly inhibitory (all
+            of their outgoing recurrent synapses negated).
+        wlsm_seed_source, wlsm_seed_filter: seeds for the two recurrent
+            matrices. They must differ, otherwise both reservoirs are built
+            with identical connectivity.
 
     Returns:
         Tuple ``(lsm_source, lsm_filter)``, both already moved to ``device``
@@ -81,7 +87,8 @@ def build_lsm_pair(
         stdp_params=stdp_params_source,
         Win_strength=win_strength_source,
         th=th_source,
-        inhibit=inhibit
+        inhibit=inhibit,
+        wlsm_seed=wlsm_seed_source,
     ).to(device)
 
     lsm_filter = LSM(
@@ -90,7 +97,8 @@ def build_lsm_pair(
         stdp_params=stdp_params_filter,
         Win_strength=win_strength_filter,
         th=th_filter,
-        inhibit=inhibit
+        inhibit=inhibit,
+        wlsm_seed=wlsm_seed_filter,
     ).to(device)
 
     return lsm_source, lsm_filter

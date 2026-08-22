@@ -17,6 +17,16 @@ Connectivity:
       ``build_weight_lsm_probabilistic``). A fraction of neurons are
       randomly flagged inhibitory.
 
+Index convention:
+    ``Wlsm`` and ``Win`` are copied straight into ``nn.Linear`` weights
+    (``self.lsm.recurrent`` and ``self.fc1``), which compute
+    ``y[i] = sum_j W[i, j] * x[j]``. Rows are therefore **post-synaptic**
+    targets and columns **pre-synaptic** sources: ``Wlsm[i, j]`` is the
+    synapse from neuron ``j`` onto neuron ``i``, and ``Win[i, c]`` the one
+    from input channel ``c`` onto neuron ``i``. Making a neuron inhibitory
+    means negating its *column* (all of its outgoing synapses); negating a
+    row would instead make that neuron receive only inhibition, silencing it.
+
 Neuron dynamics follow the second-order RSynaptic leaky integrate-and-fire
 model from snnTorch (Eq. 2-3 of the paper), and recurrent weights are
 updated online via asymmetric STDP (:class:`~src.stdp.AsymmetricSTDP`) when
@@ -81,28 +91,38 @@ def build_weight_lsm_probabilistic(positions: torch.Tensor, C=1.0, l=3.4,
     ``l=3.4`` in the paper). A Bernoulli draw with that probability decides
     which pairs are connected; connected weights are drawn from
     ``Normal(w_mean, w_std)``, and a random ``inh_ratio`` fraction of
-    (pre-synaptic) neurons have their outgoing weights negated to act as
-    inhibitory units.
+    neurons act as inhibitory units: their **column** of ``W`` is negated,
+    i.e. all of their outgoing synapses become negative (Dale's principle).
+    Their incoming synapses are left untouched, so they are driven like any
+    other neuron and can fire.
+
+    ``seed`` seeds a local :class:`torch.Generator` rather than the global
+    RNG, so building one reservoir does not perturb (or replicate itself
+    into) any other; pass distinct seeds to obtain independent reservoirs.
 
     Returns:
         Tuple of ``(W, prob)``: the ``(N, N)`` sampled weight matrix and the
         underlying connection-probability matrix (useful for diagnostics).
     """
-    if seed is not None:
-        torch.manual_seed(seed)
     pos = positions.to(device) if device is not None else positions
+    gen = torch.Generator(device=pos.device)
+    if seed is not None:
+        gen.manual_seed(int(seed))
     d2 = pairwise_squared_distances(pos)
     prob = C * torch.exp(- d2 / (l * l))
     prob = torch.clamp(prob, max=1.0)
-    bern = torch.distributions.Bernoulli(probs=prob)
-    mask = bern.sample()
+    mask = torch.bernoulli(prob, generator=gen)
     N = prob.shape[0]
-    weights = torch.normal(mean=w_mean, std=w_std, size=(N, N), device=pos.device)
+    weights = torch.normal(mean=w_mean, std=w_std, size=(N, N),
+                           generator=gen, device=pos.device)
 
     if inhibit:
+        # Column-wise: neuron `j` is inhibitory, so every synapse *leaving* it
+        # (column j) is negated. Negating rows instead would make the neuron
+        # receive only inhibition and never fire.
         n_inh = int(N * inh_ratio)
-        inh_idx = torch.randperm(N)[:n_inh]
-        weights[inh_idx, :] *= -1.0
+        inh_idx = torch.randperm(N, generator=gen, device=pos.device)[:n_inh]
+        weights[:, inh_idx] *= -1.0
 
     W = mask * weights
     if not self_connection:
@@ -111,14 +131,15 @@ def build_weight_lsm_probabilistic(positions: torch.Tensor, C=1.0, l=3.4,
 
 
 def build_weight_in_layered(n_layers=77, layer_h=3, layer_w=3, n_inputs=77,
-                            win_strength=0.5, inhibit=True, inh_ratio: float = 0.2,
+                            win_strength=0.5,
                             device: Optional[torch.device] = None):
     """Build layered input weights: each input channel drives every neuron in one layer.
 
     All neurons within a layer receive the same fixed ``win_strength`` from
     their corresponding input channel (``n_inputs`` must equal ``n_layers``).
-    A random ``inh_ratio`` fraction of neurons get negated (inhibitory) input
-    weights.
+    Input drive is purely excitatory: inhibition lives in the recurrent
+    matrix, where it is expressed per pre-synaptic neuron (see
+    :func:`build_weight_lsm_probabilistic`).
     """
     N = n_layers * layer_h * layer_w
     assert n_inputs == n_layers, "LSM ASSERT: n_inputs must equal n_layers"
@@ -127,18 +148,11 @@ def build_weight_in_layered(n_layers=77, layer_h=3, layer_w=3, n_inputs=77,
         start = layer * (layer_h * layer_w)
         end = start + (layer_h * layer_w)
         Win[start:end, layer] = win_strength
-
-    if inhibit:
-        n_inh = int(N * inh_ratio)
-        inh_idx = torch.randperm(N)[:n_inh]
-        Win[inh_idx, :] *= -1.0
     return Win
 
 
 def build_weight_in_layered_one_to_one(n_layers, layer_h, layer_w, n_inputs,
                                        win_strength=0.5,
-                                       inhibit=True,
-                                       inh_ratio: float = 0.2,
                                        device: Optional[torch.device] = None):
     """Build layered input weights with per-neuron randomized gain (default LSM input mapping).
 
@@ -146,6 +160,7 @@ def build_weight_in_layered_one_to_one(n_layers, layer_h, layer_w, n_inputs,
     ``win_strength`` for every neuron in a layer, each neuron gets an
     independent gain drawn uniformly from ``[0, win_strength)``. This is the
     input connectivity used by :class:`LSM` by default (``one_to_one=True``).
+    Input drive is purely excitatory, as above.
     """
     assert n_inputs == n_layers
     N = n_layers * layer_h * layer_w
@@ -154,11 +169,6 @@ def build_weight_in_layered_one_to_one(n_layers, layer_h, layer_w, n_inputs,
         start = i * (layer_h * layer_w)
         end = start + (layer_h * layer_w)
         Win[start:end, i] = win_strength * torch.rand(layer_h * layer_w, device=device)
-
-    if inhibit:
-        n_inh = int(N * inh_ratio)
-        inh_idx = torch.randperm(N)[:n_inh]
-        Win[inh_idx, :] *= -1.0
     return Win
 
 
@@ -189,8 +199,11 @@ class LSM(nn.Module):
             ``'Leaky'``.
         one_to_one: whether to use :func:`build_weight_in_layered_one_to_one`
             (default) instead of :func:`build_weight_in_layered` for ``Win``.
-        inhibit: whether a random fraction of neurons get inhibitory (negated)
-            weights, both for ``Win`` and ``Wlsm``.
+        inhibit: whether a random fraction of neurons are inhibitory, i.e.
+            have all of their outgoing recurrent synapses negated in
+            ``Wlsm``. Input weights are always excitatory.
+        wlsm_seed: seed for the local RNG used to sample ``Wlsm``. Two
+            reservoirs must be given different seeds to be independent.
     """
 
     def __init__(self,
@@ -209,7 +222,8 @@ class LSM(nn.Module):
                  th: float = 20.0,
                  neuron_type: str = 'RSynaptic',
                  one_to_one: bool = True,
-                 inhibit: bool = True):
+                 inhibit: bool = True,
+                 wlsm_seed: Optional[int] = 48):
         super().__init__()
         self.n_layers = n_layers
         self.layer_h = layer_h
@@ -230,11 +244,10 @@ class LSM(nn.Module):
                     layer_w=layer_w,
                     n_inputs=in_ch,
                     win_strength=0.5,
-                    inhibit=inhibit
                 )
             else:
                 Win = build_weight_in_layered(n_layers=n_layers, layer_h=layer_h, layer_w=layer_w,
-                                            n_inputs=in_ch, win_strength=0.5, inhibit=inhibit)
+                                            n_inputs=in_ch, win_strength=0.5)
         Win = Win * Win_strength
         assert Win.shape == (self.N, in_ch)
         self.register_buffer("Win", Win)
@@ -242,7 +255,8 @@ class LSM(nn.Module):
         # Wlsm: recurrent reservoir connectivity, distance-decaying probability (Eq. 1).
         if Wlsm is None:
             Wlsm_init, prob = build_weight_lsm_probabilistic(self.positions, C=C, l=sigma,
-                                                            w_mean=0.08, w_std=0.03, self_connection=False, inhibit=inhibit)
+                                                            w_mean=0.08, w_std=0.03, self_connection=False,
+                                                            inhibit=inhibit, seed=wlsm_seed)
             Wlsm = Wlsm_init
             self.register_buffer("W_prob", prob)
         assert Wlsm.shape == (self.N, self.N)

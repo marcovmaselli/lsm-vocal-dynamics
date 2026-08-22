@@ -8,6 +8,13 @@ Implements Eq. (4) of the paper:
 where ``dt = t_post - t_pre``. Both an exponential-trace formulation (fast,
 used by the paper's pipeline) and an explicit finite-time-window formulation
 are provided; see ``mode`` below.
+
+Index convention:
+    The internal accumulators (``C_pot``, ``C_dep``, and the ``contrib_*``
+    terms) are indexed ``[pre, post]``, which is the natural layout for the
+    outer products below. The weight matrix handed to :meth:`step_update` is
+    an ``nn.Linear`` weight and is indexed ``[post, pre]``, so the update is
+    transposed before being applied to it.
 """
 
 from __future__ import annotations
@@ -168,7 +175,9 @@ class AsymmetricSTDP:
         """Apply one STDP update to ``W`` in place, given the current step's spikes.
 
         Args:
-            W: ``(N, N)`` recurrent weight tensor, updated in place.
+            W: ``(N, N)`` recurrent weight tensor, updated in place. Indexed
+                ``[post, pre]`` (an ``nn.Linear`` weight); an optional
+                ``mask`` must follow the same layout.
             spk_t: current spikes, shaped ``(batch, N)`` or ``(N,)`` (0/1).
             t_step: current timestep index (only used for logging/compatibility;
                 the refractory counter tracks its own internal step count).
@@ -205,7 +214,10 @@ class AsymmetricSTDP:
             # Depression: current pre spikes paired with past post-synaptic trace.
             contrib_minus = spk.transpose(0, 1) @ self.post_trace      # (N, N)
 
-            deltaW = (self.lr * (self.A_plus * contrib_plus - self.A_minus * contrib_minus)).to(W.device)
+            # contrib_* are [pre, post]; W is an nn.Linear weight, i.e.
+            # [post, pre] -- transpose so each update lands on the synapse it
+            # was computed for and not on its reverse.
+            deltaW = (self.lr * (self.A_plus * contrib_plus - self.A_minus * contrib_minus)).t().to(W.device)
 
             if self.C_pot is not None:
                 pot = (self.lr * self.A_plus * contrib_plus).to(self.device)
@@ -242,7 +254,8 @@ class AsymmetricSTDP:
             contrib_plus = torch.einsum('bn,bm->nm', pre_weighted, spk)     # weighted pre-history outer current post
             contrib_minus = torch.einsum('bn,bm->nm', spk, post_weighted)  # current pre outer weighted post-history
 
-            deltaW = (self.lr * (contrib_plus - contrib_minus)).to(W.device)
+            # [pre, post] -> [post, pre], see the trace branch above.
+            deltaW = (self.lr * (contrib_plus - contrib_minus)).t().to(W.device)
 
             if self.C_pot is not None:
                 pot = (self.lr * contrib_plus).to(self.device)
@@ -263,6 +276,9 @@ class AsymmetricSTDP:
 
     def get_causality(self, normalize: bool = True, eps: float = 1e-9):
         """Return the accumulated net (potentiation - depression) per synapse since the last reset.
+
+        The returned matrix is indexed ``[pre, post]`` (transpose it to
+        compare against a weight matrix).
 
         Args:
             normalize: if True, divide by ``C_pot + C_dep`` so the result is
